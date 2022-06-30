@@ -34,12 +34,11 @@ def create_app(test_config = None):
     @app.route('/drinks')
     def get_drinks():
         try:
-            drinks = Drink.short()
+            drinks = Drink.query.all()
             if len(drinks) > 0:
                 return jsonify({
-                    'status': 200,
                     'success': True,
-                    'drinks': drinks,
+                    'drinks': [drink.short() for drink in drinks]
                 })
 
         except:
@@ -54,15 +53,14 @@ def create_app(test_config = None):
         returns status code 200 and json {"success": True, "drinks": drinks} where drinks is the list of drinks
             or appropriate status code indicating reason for failure
     '''
-    @app.route('/drinks/<int:drink_id>')
+    @app.route('/drinks-detail', methods=['GET'])
     @requires_auth('get:drinks-detail')
-    def get_drinkDetail(drink_id):
+    def get_drinkDetail(jwt ):
         try:
-            drinks = Drink.long(drink_id)
+            drinks = Drink.query.all()
             return jsonify({
-                'status': 200,
                 'success': True,
-                'drinks': drinks
+                'drinks': [drink.long() for drink in drinks]
             })
         except:
             abort(404)
@@ -79,20 +77,21 @@ def create_app(test_config = None):
     '''
     @app.route('/drinks', methods=['POST'])
     @requires_auth('post:drinks')
-    def create_drink():
+    def create_drink(jwt):
         body = request.get_json()
+        
         try:
-            title = body.get('title', None)
-            recipe = body.get('recipe', None)
+            req_title = body['title']
+            req_recipe = body['recipe']
 
-            drink = Drink(title=title, recipe=recipe)
+            drink = Drink(title=req_title, recipe=json.dumps(req_recipe))
             drink.insert()
             return jsonify({
                 'success': True,
-                'status': 200
+                'drinks': drink.long()
             })
         except:
-            abort(404)
+            abort(400)
 
 
     '''
@@ -108,19 +107,19 @@ def create_app(test_config = None):
     '''
     @app.route('/drinks/<id>', methods=['PATCH'])
     @requires_auth('patch:drinks')
-    def update_drink(id):
+    def update_drink(jwt, id):
         body = request.get_json()
         try:
             title = body.get('title', None)
             recipe = body.get('recipe', None)
             drink = Drink.query.filter(Drink.id == id).one_or_none()
+            # print(drink)
             if not drink:
                 abort(404)
             drink.update()
             return jsonify({
                 'success': True,
-                'status': 200,
-                'drinks': drink
+                'drinks': drink.long()
             })
         except:
             abort(422)
@@ -137,12 +136,16 @@ def create_app(test_config = None):
     '''
     @app.route('/drinks/<id>')
     @requires_auth('delete:drinks')
-    def delete_drink(id):
+    def delete_drink(jwt, id):
         try:
-            drink = Drink.query.filter(Drink.id == id)
+            drink = Drink.query.filter(Drink.id == id).one_or_none()
             if not drink:
                 abort(404)
             drink.delete()
+            return jsonify({
+                'success': True,
+                'delete': id 
+            })
         except:
             abort(404)
 
@@ -171,6 +174,10 @@ def create_app(test_config = None):
                         }), 404
 
     '''
+    '''
+    @TODO implement error handler for 404
+        error handler should conform to general task above
+    '''
     @app.errorhandler(404)
     def not_found(error):
         return jsonify({
@@ -178,17 +185,32 @@ def create_app(test_config = None):
             'error': 404,
             'message': "resource not found"
         }), 404
-    '''
-    @TODO implement error handler for 404
-        error handler should conform to general task above
-    '''
-
+    @app.errorhandler(400)
+    def bad_request(error):
+        return jsonify({
+            'success': False,
+            'error': 400,
+            'message': 'bad request'
+        }), 400
+    @app.errorhandler(405)
+    def method_not_allowed(error):
+        return jsonify({
+            'success': False,
+            'error': 405,
+            'message': 'method not allowed'
+        }), 405
 
     '''
     @TODO implement error handler for AuthError
         error handler should conform to general task above
     '''
-
+    @app.errorhandler(AuthError)
+    def authenticationError(error):
+        return jsonify({
+            'success': False,
+            'error': error.status_code,
+            'message': error.error
+        }), error.status_code
 
 
     return app
